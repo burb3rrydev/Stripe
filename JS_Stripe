@@ -1,0 +1,313 @@
+    <script>
+const menuButtons = document.querySelectorAll('.menu-item-button');
+const selectedItemsList = document.querySelector('.selected-items ul');
+const selectedItemsData = [];
+
+// Select your form and checkout button elements
+const form = document.querySelector('#catering-order form');
+
+const checkoutButton = document.getElementById('checkout-button');
+
+
+// Add a click event listener to the checkout button
+checkoutButton.addEventListener('click', (event) => {
+  if (checkoutButton.disabled) {
+    event.preventDefault(); // Prevent the button's default click behavior
+    alert('Please fill out all required fields before proceeding.');
+  }
+});
+
+
+
+form.addEventListener('submit', function (event) {
+    event.preventDefault(); // Prevent the default form submission
+
+    // Serialize form data into a URL-encoded string
+    const formData = new FormData(form);
+    const encodedData = new URLSearchParams(formData).toString();
+
+    // Send a POST request to the form submission URL
+    fetch('https://formsubmit.co/info@aipenft.com', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: encodedData,
+    })
+        .then(response => {
+            if (response.ok) {
+                // Handle a successful response (e.g., display a success message)
+                alert('Form submitted successfully!');
+                // Optionally, reset the form
+                form.reset();
+            } else {
+                // Handle an error response (e.g., display an error message)
+                alert('Form submission failed. Please try again later.');
+            }
+        })
+        .catch(error => {
+            // Handle any network errors
+            console.error('Error:', error);
+            alert('An error occurred while submitting the form.');
+        });
+});
+
+
+// Your Stripe API key
+
+var stripe = Stripe('pk_test_51NqLG7KjVanaTJoKSzxIEWuol7Xi2G68uf7PlWBNKPgZ0o8bvCLvciR6pVuuot5fdFBlp7Tz6tO9ka2jQRKNRE1800Fz09uURP');
+
+// Client-side JavaScript
+// const stripeKeyEndpoint = '/api/stripe-key'; // Endpoint on your server
+
+// let stripe;
+
+// // Fetch the Stripe publishable key from the server
+// fetch(stripeKeyEndpoint)
+//   .then(response => response.json())
+//   .then(data => {
+//     const stripe = Stripe(data.stripePublishableKey);
+//     // Now you can use the Stripe object with the retrieved key
+//   })
+//   .catch(error => {
+//     console.error('Error fetching Stripe key:', error);
+// });
+
+
+
+// Initialize an empty cart
+const cart = [];
+
+// Function to add an item to the cart
+function addItemToCart(item, price) {
+    const existingItem = cart.find(cartItem => cartItem.item === item);
+    if (existingItem) {
+        existingItem.quantity++;
+    } else {
+        cart.push({ item, price, quantity: 1 });
+    }
+    updateCart();
+}
+
+function updateCart() {
+    const cartItems = document.getElementById('cart-items');
+    const cartTotal = document.getElementById('cart-total');
+    cartItems.innerHTML = '';
+    let total = 0;
+
+    cart.forEach((item, index) => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <span>${item.item} x${item.quantity} - $${item.price * item.quantity}</span>
+            <button type="button" class="quantity-button minus">-</button>
+            <span class="quantity">${item.quantity}</span>
+            <button type="button" class="quantity-button plus">+</button>
+            <button class="remove-button" data-index="${index}">x</button>
+        `;
+
+        cartItems.appendChild(li);
+        total += item.price * item.quantity;
+
+        // Add event listener for the minus button
+        li.querySelector('.quantity-button.minus').addEventListener('click', () => {
+            if (item.quantity > 1) {
+                item.quantity--;
+                updateCart();
+            }
+        });
+
+        // Add event listener for the plus button
+        li.querySelector('.quantity-button.plus').addEventListener('click', () => {
+            item.quantity++;
+            updateCart();
+        });
+
+        // Add event listener for the remove button
+        li.querySelector('.remove-button').addEventListener('click', () => {
+            cart.splice(index, 1);
+            updateCart();
+        });
+    });
+
+    cartTotal.textContent = total;
+}
+
+// Event listener for menu item buttons
+menuButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        const item = button.getAttribute('data-item');
+        const price = parseFloat(button.getAttribute('data-price'));
+        addItemToCart(item, price);
+        updateCart(); // Update the cart display
+    });
+});
+
+// Event listener for checkout button
+
+checkoutButton.addEventListener('click', async () => {
+    // Create a Stripe Checkout session
+    const sessionResponse = await fetch('/create-checkout-session', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cart }),
+    });
+
+    if (sessionResponse.status !== 200) {
+        console.error('Failed to create session');
+        return;
+    }
+
+    const sessionData = await sessionResponse.json();
+
+    try {
+        // Redirect to the Stripe Checkout page using the retrieved sessionId
+        const result = await stripe.redirectToCheckout({
+            sessionId: sessionData.sessionId,
+        });
+
+        if (result.error) {
+            console.error(result.error.message);
+        } else if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
+            // Payment was successful, trigger form submission
+            submitForm();
+        }
+    } catch (error) {
+        console.error(error);
+    }
+});
+
+// Function to handle form submission
+function submitForm() {
+    // Get the form element
+    const form = document.querySelector('#catering-order form');
+
+    // Prepare the selected items data for inclusion in the email
+    const selectedItemsInput = document.getElementById('selectedItems');
+    const selectedItems = selectedItemsData.map(item => `${item.name}`).join('\n'); // Use line breaks
+    
+    // Set the selected items data in the input field
+    selectedItemsInput.value = selectedItems;
+
+
+    // Submit the form
+    form.submit();
+}
+
+function updateSelectedItemsInput() {
+    const selectedItemsInput = document.getElementById('selectedItems');
+    selectedItemsInput.value = JSON.stringify(selectedItemsData);
+
+    // Format the selected items with line breaks
+    let selectedItemsFormatted = '';
+    selectedItemsData.forEach((item) => {
+        selectedItemsFormatted += `${item.name} - Quantity: ${item.quantity} | `;
+    });
+
+    // Update the selected items section
+    selectedItemsInput.value = selectedItemsFormatted;
+}
+
+menuButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        button.classList.toggle('selected');
+        const itemName = button.getAttribute('data-item');
+        const listItem = document.createElement('li');
+        const initialQuantity = 1; // Initial quantity
+        listItem.innerHTML = `
+            <span>${itemName}</span>
+            <button type="button" class="quantity-button minus">-</button>
+            <span class="quantity">${initialQuantity}</span>
+            <button type="button" class="quantity-button plus">+</button>
+            <button class="remove-button">x</button>
+        `;
+
+        if (button.classList.contains('selected')) {
+            if (selectedItemsList) { // Check if selectedItemsList exists
+                selectedItemsList.appendChild(listItem);
+            }
+            // Initialize the quantity for the selected item
+            selectedItemsData.push({ name: itemName, quantity: initialQuantity });
+        } else {
+            const itemsToRemove = selectedItemsList.querySelectorAll('li');
+            itemsToRemove.forEach((item) => {
+                if (item.querySelector('span').textContent === itemName) {
+                    selectedItemsList.removeChild(item);
+                    // Remove the item from the selectedItemsData array
+                    const index = selectedItemsData.findIndex((itemData) => itemData.name === itemName);
+                    if (index !== -1) {
+                        selectedItemsData.splice(index, 1);
+                    }
+                }
+            });
+        }
+
+        // Update the hidden input field immediately
+        updateSelectedItemsInput();
+
+        const quantityButtons = listItem.querySelectorAll('.quantity-button');
+        quantityButtons.forEach((quantityButton) => {
+            quantityButton.addEventListener('click', () => {
+                const quantityElement = listItem.querySelector('.quantity');
+                let quantity = parseInt(quantityElement.textContent);
+
+                if (quantityButton.classList.contains('plus')) {
+                    quantity++;
+                } else if (quantityButton.classList.contains('minus') && quantity > 1) {
+                    quantity--;
+                }
+
+                quantityElement.textContent = quantity;
+
+                // Update the selectedItemsData array with the new quantity
+                const index = selectedItemsData.findIndex((itemData) => itemData.name === itemName);
+                if (index !== -1) {
+                    selectedItemsData[index].quantity = quantity;
+                }
+
+                // Update the hidden input field immediately
+                updateSelectedItemsInput();
+            });
+        });
+
+        const removeButton = listItem.querySelector('.remove-button');
+        removeButton.addEventListener('click', () => {
+            if (selectedItemsList) { // Check if selectedItemsList exists
+                selectedItemsList.removeChild(listItem);
+            }
+            // Remove the item from the selectedItemsData array
+            const index = selectedItemsData.findIndex((itemData) => itemData.name === itemName);
+            if (index !== -1) {
+                selectedItemsData.splice(index, 1);
+            }
+
+            // Update the hidden input field immediately
+            updateSelectedItemsInput();
+        });
+    });
+});
+
+function fadeInMenuItems() {
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach((item, index) => {
+        setTimeout(() => {
+            item.classList.add('fade-in');
+        }, index * 200);
+    });
+}
+
+window.addEventListener('load', fadeInMenuItems);
+showMenu(1);
+
+function showMenu(menuNumber) {
+    for (let i = 1; i <= 3; i++) {
+        const menu = document.getElementById(`menu${i}`);
+        menu.style.display = 'none';
+    }
+
+    const selectedMenu = document.getElementById(`menu${menuNumber}`);
+    selectedMenu.style.display = 'block';
+}
+
+    </script>
